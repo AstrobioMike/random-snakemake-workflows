@@ -2,10 +2,6 @@
 ##################### VARIABLES TO SET #####################
 ############################################################
 
-#############################################################
-##### These first 5 need to match what is on our system #####
-#############################################################
-
 ## single-column file with unique portion of sample names
 sample_info_file:
     "unique-sample-IDs.txt"
@@ -20,7 +16,7 @@ reads_dir:
     "../../trimmed-data/"
 
 ## read suffixes (region following the unique part of the sample names)
-    # e.g. for "Sample-1_R1_raw.fastq.gz" would be "_R1_raw.fastq.gz"
+    # e.g. for "Sample-1_R1_trimmed.fq.gz" would be "_R1_trimmed.fq.gz"
 R1_suffix:
     "_R1_trimmed.fq.gz"
 R2_suffix:
@@ -28,27 +24,26 @@ R2_suffix:
 
 ## MAG directory
 MAGs_dir:
-    ""
+    "../dRepd-MAG-fastas/"
 
 ## MAG file suffix
 MAG_suffix:
     ".fa"
 
-######################################################################
-##### The rest only need to be altered if we want to change them #####
-######################################################################
+## mapping directory for outputs
+mapping_dir:
+    "../mapping-to-MAGs/"
+
+## logs directory
+logs_dir:
+    "logs/"
+
 
 ## number of threads to use PER snakemake job (which is set with the -j parameter passed to snakemake call)
     # passed to bowtie2, samtools (many may be running concurrently)
 num_threads:
     4
 
-mapping_dir:
-    "../mapping-to-MAGs/"
-MAGs_dir:
-    "../dRepd-MAG-fastas/"
-logs_dir:
-    "logs/"
 
 
 ## example usage command ##
