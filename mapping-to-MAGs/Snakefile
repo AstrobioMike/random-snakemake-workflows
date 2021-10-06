@@ -109,7 +109,7 @@ rule make_bowtie2_index:
         "benchmarks/make_bowtie2_index-benchmarks.tsv"
     shell:
         """
-        bowtie2-build {input} {output} > {log} 2>&1
+        bowtie2-build {input} {params.index} > {log} 2>&1
         touch {output}
         """
 
@@ -125,7 +125,7 @@ rule run_mapping:
         R1 = config["reads_dir"] + "{ID}" + config["R1_suffix"],
         R2 = config["reads_dir"] + "{ID}" + config["R2_suffix"]
     params:
-        index = config["mapping_dir"] + "{ID}-index",
+        index = config["mapping_dir"] + "All-MAGs-index",
         mapping_info = config["mapping_dir"] + "{ID}-mapping-info.txt",
         num_threads = config["num_threads"]
     resources:
@@ -134,7 +134,7 @@ rule run_mapping:
     output:
         config["mapping_dir"] + "{ID}.bam"
     log:
-        config["logs_dir"] + "{ID}-bowtie2-build.log"
+        config["logs_dir"] + "{ID}-bowtie2-mapping.log"
     benchmark:
         "benchmarks/run_mapping-{ID}-benchmarks.tsv"
     shell:
