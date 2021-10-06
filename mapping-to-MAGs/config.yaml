@@ -1,0 +1,62 @@
+############################################################
+##################### VARIABLES TO SET #####################
+############################################################
+
+#############################################################
+##### These first 5 need to match what is on our system #####
+#############################################################
+
+## single-column file with unique portion of sample names
+sample_info_file:
+    "unique-sample-IDs.txt"
+
+## single-column file with unique portion of MAG IDs
+MAG_info_file:
+    "unique-MAG-IDs.txt"
+
+
+## raw reads directory (can be relative to workflow directory, or needs to be full path)
+reads_dir:
+    "../../trimmed-data/"
+
+## read suffixes (region following the unique part of the sample names)
+    # e.g. for "Sample-1_R1_raw.fastq.gz" would be "_R1_raw.fastq.gz"
+R1_suffix:
+    "_R1_trimmed.fq.gz"
+R2_suffix:
+    "_R2_trimmed.fq.gz"
+
+## MAG directory
+MAGs_dir:
+    ""
+
+## MAG file suffix
+MAG_suffix:
+    ".fa"
+
+######################################################################
+##### The rest only need to be altered if we want to change them #####
+######################################################################
+
+## number of threads to use PER snakemake job (which is set with the -j parameter passed to snakemake call)
+    # passed to bowtie2, samtools (many may be running concurrently)
+num_threads:
+    4
+
+mapping_dir:
+    "../mapping-to-MAGs/"
+MAGs_dir:
+    "../dRepd-MAG-fastas/"
+logs_dir:
+    "logs/"
+
+
+## example usage command ##
+# snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 2 -p
+
+# `--use-conda` – this specifies to use the conda environments included in the workflow
+# `--conda-prefix` – this allows us to point to where the needed conda environments should be stored. Including this means if we use the workflow on a different dataset somewhere else in the future, it will re-use the same conda environments rather than make new ones. The value listed here, `${CONDA_PREFIX}/envs`, is the default location for conda environments (the variable `${CONDA_PREFIX}` will be expanded to the appropriate location on whichever system it is run on).
+# `-j` – this lets us set how many jobs Snakemake should run concurrently (keep in mind that many of the thread and cpu parameters set in the config.yaml file will be multiplied by this)
+# `-p` – specifies to print out each command being run to the screen
+
+# See `snakemake -h` for more options and details.

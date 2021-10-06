@@ -1,0 +1,173 @@
+import os
+
+configfile: "config.yaml"
+
+
+########################################
+############# General Info #############
+########################################
+
+"""
+See the corresponding 'config.yaml' file for general use information.
+Variables that may need to be adjusted should be changed there, not here.
+"""
+
+## example usage command ##
+# snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 2 -p
+
+# `--use-conda` – this specifies to use the conda environments included in the workflow
+# `--conda-prefix` – this allows us to point to where the needed conda environments should be stored. Including 
+    # this means if we use the workflow on a different dataset somewhere else in the future, it will re-use the same 
+    # conda environments rather than make new ones. The value listed here, `${CONDA_PREFIX}/envs`, is the default 
+    # location for conda environments (the variable `${CONDA_PREFIX}` will be expanded to the appropriate location 
+    # on whichever system it is run on).
+# `-j` – this lets us set how many jobs Snakemake should run concurrently (keep in mind that many of the thread 
+    # and cpu parameters set in the config.yaml file will be multiplied by this)
+# `-p` – specifies to print out each command being run to the screen
+
+# See `snakemake -h` for more options and details.
+
+
+########################################
+#### Reading samples file into list ####
+########################################
+
+sample_IDs_file = config["sample_info_file"]
+sample_ID_list = [line.strip() for line in open(sample_IDs_file)]
+
+MAG_IDs_file = config["MAG_info_file"]
+MAG_ID_list = [line.strip() for line in open(MAG_IDs_file)]
+
+# making sure there are all unique names in both
+if len(set(sample_ID_list)) != len(sample_ID_list):
+
+    print("\n    Not all sample IDs in the " + str(config["sample_info_file"]) + " file are unique :(\n")
+    print("    Exiting for now.\n")
+    exit()
+
+if len(set(MAG_ID_list)) != len(MAG_ID_list):
+
+    print("\n    Not all MAG IDs in the " + str(config["MAG_info_file"]) + " file are unique :(\n")
+    print("    Exiting for now.\n")
+    exit()
+
+
+########################################
+######## Setting up directories ########
+########################################
+
+dirs_to_create = [config["mapping_dir"], config["logs_dir"], "benchmarks"]
+
+for dir in dirs_to_create:
+    try:
+        os.mkdir(dir)
+    except:
+        pass
+
+
+########################################
+############# Rules start ##############
+########################################
+
+rule all:
+    input:
+        contig_covs = expand(config["mapping_dir"] + "{ID}-det-filtered-contig-coverages.tsv", ID = sample_ID_list)
+
+    shell:
+        """
+        bash scripts/combine-benchmarks.sh
+        """
+
+
+
+rule combine_all_MAGs_for_bowtie2_index:
+    input:
+        expand(config["MAGs_dir"] + "{ID}" + config["MAG_suffix"], ID = MAG_ID_list)
+    output:
+        config["MAGs_dir"] + "All-MAGs.fa"
+    shell:
+        """
+        cat {input} > {output}
+        """
+
+
+rule make_bowtie2_index:
+    """
+    This rule builds the bowtie2 index and runs the mapping for each sample.
+    """
+    conda:
+        "envs/mapping.yaml"
+    input:
+        config["MAGs_dir"] + "All-MAGs.fa"
+    params:
+        index = config["mapping_dir"] + "All-MAGs-index"
+    output:
+        mapping_trigger = config["mapping_dir"] + "mapping-trigger.txt"
+    log:
+        config["logs_dir"] + "bowtie2-build.log"
+    benchmark:
+        "benchmarks/make_bowtie2_index-benchmarks.tsv"
+    shell:
+        """
+        bowtie2-build {input} {output} > {log} 2>&1
+        touch {output}
+        """
+
+
+rule run_mapping:
+    """
+    This rule runs the mapping for each sample.
+    """
+    conda:
+        "envs/mapping.yaml"
+    input:
+        mapping_trigger = config["mapping_dir"] + "mapping-trigger.txt",
+        R1 = config["reads_dir"] + "{ID}" + config["R1_suffix"],
+        R2 = config["reads_dir"] + "{ID}" + config["R2_suffix"]
+    params:
+        index = config["mapping_dir"] + "{ID}-index",
+        mapping_info = config["mapping_dir"] + "{ID}-mapping-info.txt",
+        num_threads = config["num_threads"]
+    resources:
+        cpus = config["num_threads"],
+        mem_mb = 5000
+    output:
+        config["mapping_dir"] + "{ID}.bam"
+    log:
+        config["logs_dir"] + "{ID}-bowtie2-build.log"
+    benchmark:
+        "benchmarks/run_mapping-{ID}-benchmarks.tsv"
+    shell:
+        """
+        bowtie2 --mm -q --threads {params.num_threads} -x {params.index} -1 {input.R1} -2 {input.R2} --no-unal 2> {params.mapping_info} | samtools view -b | samtools sort -@ {params.num_threads} > {output} 2> /dev/null
+        """
+
+
+rule get_cov_and_det:
+    """
+    This rule pulls out contig-level coverage and detection information for each sample,
+    and filters it based on requiring at least 50% detection (coverage set to 0 if not).
+    """
+
+    conda:
+        "envs/mapping.yaml"
+    input:
+        bam = config["mapping_dir"] + "{ID}.bam"
+    params:
+        contig_cov_and_det_tmp = config["mapping_dir"] + "{ID}-full-contig-cov-and-det.tsv",
+        contig_cov_tmp = config["mapping_dir"] + "{ID}-contig-cov.tmp"
+    output:
+        contig_covs = config["mapping_dir"] + "{ID}-det-filtered-contig-coverages.tsv"
+    log:
+        config["logs_dir"] + "{ID}-pileup.log"
+    benchmark:
+        "benchmarks/get_cov_and_det-{ID}-benchmarks.tsv"
+    shell:
+        """
+        pileup.sh -in {input.bam} out={params.contig_cov_and_det_tmp} > {log} 2>&1
+
+        # filtering coverages based on detection
+        grep -v "#" {params.contig_cov_and_det_tmp} | awk -F $'\\t' ' BEGIN {{OFS=FS}} {{ if ( $5 <= 50 ) $2 = 0 }} {{ print $1,$2 }} ' > {params.contig_cov_tmp}
+        cat <( printf "contig_ID\tcoverage\n" ) {params.contig_cov_tmp} > {output.contig_covs}
+        """
+
