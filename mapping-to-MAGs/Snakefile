@@ -56,7 +56,7 @@ if len(set(MAG_ID_list)) != len(MAG_ID_list):
 ######## Setting up directories ########
 ########################################
 
-dirs_to_create = [config["mapping_dir"], config["logs_dir"], "benchmarks"]
+dirs_to_create = [config["mapping_dir"], config["combined_MAG_mapping_results_dir"], config["logs_dir"], "benchmarks"]
 
 for dir in dirs_to_create:
     try:
@@ -71,7 +71,7 @@ for dir in dirs_to_create:
 
 rule all:
     input:
-        contig_covs = expand(config["mapping_dir"] + "{ID}-det-filtered-contig-coverages.tsv", ID = sample_ID_list)
+        config["combined_MAG_mapping_results_dir"] + "Combined-MAG-level-coverages.tsv"
 
     shell:
         """
@@ -139,7 +139,9 @@ rule run_mapping:
         "benchmarks/run_mapping-{ID}-benchmarks.tsv"
     shell:
         """
-        bowtie2 --mm -q --threads {params.num_threads} -x {params.index} -1 {input.R1} -2 {input.R2} --no-unal 2> {params.mapping_info} | samtools view -b | samtools sort -@ {params.num_threads} > {output} 2> /dev/null
+        bowtie2 --mm -q --threads {params.num_threads} -x {params.index} -1 {input.R1} -2 {input.R2} \
+                --no-unal 2> {params.mapping_info} | samtools view -b | samtools sort -@ {params.num_threads} \
+                > {output} 2> /dev/null
         """
 
 
@@ -153,21 +155,42 @@ rule get_cov_and_det:
         "envs/mapping.yaml"
     input:
         bam = config["mapping_dir"] + "{ID}.bam"
-    params:
-        contig_cov_and_det_tmp = config["mapping_dir"] + "{ID}-full-contig-cov-and-det.tsv",
-        contig_cov_tmp = config["mapping_dir"] + "{ID}-contig-cov.tmp"
     output:
-        contig_covs = config["mapping_dir"] + "{ID}-det-filtered-contig-coverages.tsv"
+        pileup_contig_cov_and_det = config["mapping_dir"] + "{ID}-pileup-contig-cov-and-det.tsv"
     log:
         config["logs_dir"] + "{ID}-pileup.log"
     benchmark:
         "benchmarks/get_cov_and_det-{ID}-benchmarks.tsv"
     shell:
         """
-        pileup.sh -in {input.bam} out={params.contig_cov_and_det_tmp} > {log} 2>&1
-
-        # filtering coverages based on detection
-        grep -v "#" {params.contig_cov_and_det_tmp} | awk -F $'\\t' ' BEGIN {{OFS=FS}} {{ if ( $5 <= 50 ) $2 = 0 }} {{ print $1,$2 }} ' > {params.contig_cov_tmp}
-        cat <( printf "contig_ID\tcoverage\n" ) {params.contig_cov_tmp} > {output.contig_covs}
+        pileup.sh -in {input.bam} out={output.pileup_contig_cov_and_det} > {log} 2>&1
         """
 
+
+rule gen_cov_and_det_tables:
+    """
+    This rule takes the output from the get_cov_and_det rule above, and makes coverage 
+    and detection tables.
+    """
+
+    conda:
+        "envs/bit.yaml"
+    input:
+        expand(config["mapping_dir"] + "{ID}-pileup-contig-cov-and-det.tsv", ID = sample_ID_list)
+    params:
+        sample_IDs_file = config["sample_info_file"],
+        MAG_IDs_file = config["MAG_info_file"],
+        MAGs_dir = config["MAGs_dir"],
+        mapping_dir = config["mapping_dir"],
+        output_dir = config["combined_MAG_mapping_results_dir"]
+    output:
+        config["combined_MAG_mapping_results_dir"] + "Combined-MAG-level-coverages.tsv"
+    benchmark:
+        "benchmarks/gen_cov_and_det_tables-benchmarks.tsv"
+    shell:
+        """
+        python scripts/gen-MAG-coverage-and-detection-tables.py -s {params.sample_IDs_file} -M {params.MAG_IDs_file} \
+                                                                --MAG-directory {params.MAGs_dir} \
+                                                                --sample-coverage-info-directory {params.mapping_dir} \
+                                                                --output-directory {params.output_dir}
+        """
