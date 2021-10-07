@@ -102,7 +102,7 @@ rule make_bowtie2_index:
     params:
         index = config["mapping_dir"] + "All-MAGs-index"
     output:
-        mapping_trigger = config["mapping_dir"] + "mapping-trigger.txt"
+        expand(config["mapping_dir"] + "All-MAGs-index{ext}", ext = [".1.bt2", ".2.bt2", ".3.bt2", ".4.bt2", ".rev.1.bt2", ".rev.2.bt2"])
     log:
         config["logs_dir"] + "bowtie2-build.log"
     benchmark:
@@ -110,7 +110,6 @@ rule make_bowtie2_index:
     shell:
         """
         bowtie2-build {input} {params.index} > {log} 2>&1
-        touch {output}
         """
 
 
@@ -121,7 +120,7 @@ rule run_mapping:
     conda:
         "envs/mapping.yaml"
     input:
-        mapping_trigger = config["mapping_dir"] + "mapping-trigger.txt",
+        index_built_trigger = expand(config["mapping_dir"] + "All-MAGs-index{ext}", ext = [".1.bt2", ".2.bt2", ".3.bt2", ".4.bt2", ".rev.1.bt2", ".rev.2.bt2"]),
         R1 = config["reads_dir"] + "{ID}" + config["R1_suffix"],
         R2 = config["reads_dir"] + "{ID}" + config["R2_suffix"]
     params:
